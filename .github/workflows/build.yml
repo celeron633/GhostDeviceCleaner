@@ -1,0 +1,47 @@
+name: Build Windows x64
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Release / Windows x64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Configure CMake
+        run: cmake -S . -B build -A x64
+
+      - name: Build Release
+        run: cmake --build build --config Release --parallel
+
+      - name: Create ZIP package
+        shell: pwsh
+        run: |
+          $packageDir = Join-Path $env:RUNNER_TEMP "RemoveGhostDevices-windows-x64"
+          New-Item -ItemType Directory -Path $packageDir -Force | Out-Null
+          Copy-Item -LiteralPath "build/Release/RemoveGhostDevices.exe" -Destination $packageDir
+          Copy-Item -LiteralPath "README.md" -Destination $packageDir
+          Compress-Archive -Path "$packageDir/*" -DestinationPath "RemoveGhostDevices-windows-x64.zip" -Force
+
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: RemoveGhostDevices-windows-x64
+          path: RemoveGhostDevices-windows-x64.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
