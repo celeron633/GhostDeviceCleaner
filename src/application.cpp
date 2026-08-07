@@ -7,6 +7,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <cfloat>
 #include <string>
 #include <unordered_set>
 
@@ -224,40 +225,122 @@ void Application::draw_log_panel() {
     ImGui::EndChild();
 }
 
-void Application::remove_selected() {
-    std::vector<std::wstring> ids;
-    for (const auto& device : devices_) {
-        if (device.selected && !device.present) {
-            ids.push_back(device.instance_id);
-        }
+void Application::start_removal() {
+    if (removal_running_.load()) {
+        return;
     }
 
-    std::unordered_set<std::wstring> driver_packages;
-    for (const auto& id : ids) {
-        auto found = std::ranges::find_if(devices_, [&](const DeviceInfo& item) { return item.instance_id == id; });
-        const auto name = found != devices_.end() ? found->friendly_name : id;
+    std::vector<RemovalJob> jobs;
+    for (const auto& device : devices_) {
+        if (device.selected && !device.present) {
+            jobs.push_back({device.instance_id, device.friendly_name});
+        }
+    }
+    if (jobs.empty()) {
+        return;
+    }
 
-        if (remove_driver_package_) {
+    if (removal_thread_.joinable()) {
+        removal_thread_.join();
+    }
+
+    removal_completed_.store(0);
+    removal_total_.store(static_cast<int>(jobs.size()));
+    removal_succeeded_.store(0);
+    removal_failed_.store(0);
+    removal_finished_.store(false);
+    removal_running_.store(true);
+    {
+        std::scoped_lock lock(removal_mutex_);
+        removal_current_item_ = "Preparing uninstall tasks...";
+        removal_logs_.clear();
+    }
+    progress_finish_seen_ = false;
+    progress_popup_requested_ = true;
+
+    const bool remove_driver_package = remove_driver_package_;
+    removal_thread_ = std::jthread([this, jobs = std::move(jobs), remove_driver_package]() mutable {
+        run_removal(std::move(jobs), remove_driver_package);
+    });
+}
+
+void Application::run_removal(std::vector<RemovalJob> jobs, bool remove_driver_package) {
+    std::vector<LogEntry> operation_logs;
+    std::unordered_set<std::wstring> driver_packages;
+
+    const auto set_current_item = [this](std::string text) {
+        std::scoped_lock lock(removal_mutex_);
+        removal_current_item_ = std::move(text);
+    };
+
+    if (remove_driver_package) {
+        for (const auto& job : jobs) {
+            set_current_item("Reading driver information: " + wide_to_utf8(job.name));
             std::wstring inf_name;
-            const auto driver_result = manager_.get_driver_package_inf(id, inf_name);
+            const auto driver_result = manager_.get_driver_package_inf(job.instance_id, inf_name);
             if (driver_result.success) {
                 driver_packages.insert(std::move(inf_name));
             } else {
-                logs_.push_back({false, wide_to_utf8(name + L": " + driver_result.message)});
+                operation_logs.push_back({false, wide_to_utf8(job.name + L": " + driver_result.message)});
             }
         }
-
-        const auto result = manager_.remove(id);
-        logs_.push_back({result.success, wide_to_utf8(name + L": " + result.message)});
+        removal_total_.store(static_cast<int>(jobs.size() + driver_packages.size()));
     }
 
-    if (remove_driver_package_) {
+    for (const auto& job : jobs) {
+        set_current_item("Removing device: " + wide_to_utf8(job.name));
+        const auto result = manager_.remove(job.instance_id);
+        operation_logs.push_back({result.success, wide_to_utf8(job.name + L": " + result.message)});
+        if (result.success) {
+            removal_succeeded_.fetch_add(1);
+        } else {
+            removal_failed_.fetch_add(1);
+        }
+        removal_completed_.fetch_add(1);
+    }
+
+    if (remove_driver_package) {
         for (const auto& inf_name : driver_packages) {
+            set_current_item("Removing driver package: " + wide_to_utf8(inf_name));
             const auto result = manager_.uninstall_driver_package(inf_name);
-            logs_.push_back({result.success, wide_to_utf8(result.message)});
+            operation_logs.push_back({result.success, wide_to_utf8(result.message)});
+            if (result.success) {
+                removal_succeeded_.fetch_add(1);
+            } else {
+                removal_failed_.fetch_add(1);
+            }
+            removal_completed_.fetch_add(1);
         }
     }
+
+    {
+        std::scoped_lock lock(removal_mutex_);
+        removal_current_item_ = "Finalizing...";
+        removal_logs_ = std::move(operation_logs);
+    }
+    removal_running_.store(false);
+    removal_finished_.store(true);
+}
+
+void Application::finish_removal() {
+    if (removal_thread_.joinable()) {
+        removal_thread_.join();
+    }
+
+    {
+        std::scoped_lock lock(removal_mutex_);
+        logs_.insert(logs_.end(),
+            std::make_move_iterator(removal_logs_.begin()),
+            std::make_move_iterator(removal_logs_.end()));
+        removal_logs_.clear();
+    }
+
+    completed_total_ = removal_total_.load();
+    completed_succeeded_ = removal_succeeded_.load();
+    completed_failed_ = removal_failed_.load();
+    removal_finished_.store(false);
     scan_devices();
+    completion_popup_requested_ = true;
 }
 
 void Application::draw_confirmation_popup() {
@@ -277,10 +360,75 @@ void Application::draw_confirmation_popup() {
         ImGui::Spacing();
         if (ImGui::Button("Remove", ImVec2(120, 0))) {
             ImGui::CloseCurrentPopup();
-            remove_selected();
+            start_removal();
         }
         ImGui::SameLine();
         if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+}
+
+void Application::draw_progress_popup() {
+    if (progress_popup_requested_) {
+        ImGui::OpenPopup("Uninstall progress");
+        progress_popup_requested_ = false;
+    }
+
+    ImGui::SetNextWindowSize(ImVec2(520, 0), ImGuiCond_Appearing);
+    if (ImGui::BeginPopupModal("Uninstall progress", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        const int completed = removal_completed_.load();
+        const int total = std::max(removal_total_.load(), 1);
+        const float progress = std::clamp(
+            static_cast<float>(completed) / static_cast<float>(total), 0.0f, 1.0f);
+        std::string current_item;
+        {
+            std::scoped_lock lock(removal_mutex_);
+            current_item = removal_current_item_;
+        }
+
+        ImGui::Text("Processing %d / %d", completed, total);
+        ImGui::Spacing();
+        const std::string overlay = std::to_string(completed) + " / " + std::to_string(total);
+        ImGui::ProgressBar(progress, ImVec2(-FLT_MIN, 22.0f), overlay.c_str());
+        ImGui::Spacing();
+        ImGui::TextWrapped("%s", current_item.c_str());
+        ImGui::TextDisabled("Please do not close the application while devices are being removed.");
+
+        if (removal_finished_.load()) {
+            if (progress_finish_seen_) {
+                ImGui::CloseCurrentPopup();
+                finish_removal();
+            } else {
+                progress_finish_seen_ = true;
+            }
+        }
+        ImGui::EndPopup();
+    }
+}
+
+void Application::draw_completion_popup() {
+    if (completion_popup_requested_) {
+        ImGui::OpenPopup("Uninstall complete");
+        completion_popup_requested_ = false;
+    }
+
+    ImGui::SetNextWindowSize(ImVec2(440, 0), ImGuiCond_Appearing);
+    if (ImGui::BeginPopupModal("Uninstall complete", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::Text("Uninstall processing is complete.");
+        ImGui::Spacing();
+        ImGui::Text("Processed: %d", completed_total_);
+        ImGui::TextColored(color_from_hex(0xA6E3A1), "Succeeded: %d", completed_succeeded_);
+        ImGui::TextColored(
+            completed_failed_ == 0 ? color_from_hex(0xA6E3A1) : color_from_hex(0xF38BA8),
+            "Failed: %d", completed_failed_);
+        if (completed_failed_ > 0) {
+            ImGui::Spacing();
+            ImGui::TextWrapped("Some items could not be removed. See Activity for details.");
+        }
+        ImGui::Spacing();
+        if (ImGui::Button("OK", ImVec2(120, 0))) {
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
@@ -300,5 +448,7 @@ void Application::render() {
     draw_device_table();
     draw_log_panel();
     draw_confirmation_popup();
+    draw_progress_popup();
+    draw_completion_popup();
     ImGui::End();
 }
