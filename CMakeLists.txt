@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(RemoveGhostDevices VERSION 1.0.0 LANGUAGES CXX)
+project(GhostDeviceCleaner VERSION 1.0.0 LANGUAGES CXX)
 
 include(FetchContent)
 
@@ -26,7 +26,7 @@ target_include_directories(imgui PUBLIC
 )
 target_compile_definitions(imgui PRIVATE UNICODE _UNICODE)
 
-add_executable(RemoveGhostDevices WIN32
+add_executable(GhostDeviceCleaner WIN32
     src/main.cpp
     src/application.cpp
     src/application.h
@@ -40,17 +40,17 @@ add_executable(RemoveGhostDevices WIN32
     src/text_utils.h
 )
 
-target_compile_features(RemoveGhostDevices PRIVATE cxx_std_20)
-target_compile_definitions(RemoveGhostDevices PRIVATE
+target_compile_features(GhostDeviceCleaner PRIVATE cxx_std_20)
+target_compile_definitions(GhostDeviceCleaner PRIVATE
     UNICODE
     _UNICODE
     WIN32_LEAN_AND_MEAN
     NOMINMAX
 )
-target_compile_options(RemoveGhostDevices PRIVATE
+target_compile_options(GhostDeviceCleaner PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:/W4 /permissive- /utf-8>
 )
-target_link_libraries(RemoveGhostDevices PRIVATE
+target_link_libraries(GhostDeviceCleaner PRIVATE
     imgui
     d3d11
     dxgi
@@ -58,5 +58,4 @@ target_link_libraries(RemoveGhostDevices PRIVATE
     shell32
 )
 
-set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT RemoveGhostDevices)
-
+set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT GhostDeviceCleaner)

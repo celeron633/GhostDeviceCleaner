@@ -30,18 +30,17 @@ jobs:
       - name: Create ZIP package
         shell: pwsh
         run: |
-          $packageDir = Join-Path $env:RUNNER_TEMP "RemoveGhostDevices-windows-x64"
+          $packageDir = Join-Path $env:RUNNER_TEMP "GhostDeviceCleaner-windows-x64"
           New-Item -ItemType Directory -Path $packageDir -Force | Out-Null
-          Copy-Item -LiteralPath "build/Release/RemoveGhostDevices.exe" -Destination $packageDir
+          Copy-Item -LiteralPath "build/Release/GhostDeviceCleaner.exe" -Destination $packageDir
           Copy-Item -LiteralPath "README.md" -Destination $packageDir
-          Compress-Archive -Path "$packageDir/*" -DestinationPath "RemoveGhostDevices-windows-x64.zip" -Force
+          Compress-Archive -Path "$packageDir/*" -DestinationPath "GhostDeviceCleaner-windows-x64.zip" -Force
 
       - name: Upload ZIP artifact
         uses: actions/upload-artifact@v7
         with:
-          name: RemoveGhostDevices-windows-x64
-          path: RemoveGhostDevices-windows-x64.zip
+          name: GhostDeviceCleaner-windows-x64
+          path: GhostDeviceCleaner-windows-x64.zip
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
-

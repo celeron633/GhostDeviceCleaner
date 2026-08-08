@@ -1,4 +1,4 @@
-# Remove Ghost Devices
+# GhostDeviceCleaner
 
 一个使用 C++20、Win32 API、SetupAPI、DirectX 11 和 Dear ImGui 编写的 Windows 幽灵设备清理工具。功能参考仓库内的 `RemoveGhostDevices_EN.ps1`，但使用“当前设备集合”与“全部设备集合”的差集判断未连接设备。
 
@@ -22,11 +22,11 @@ cmake -S . -B build -A x64
 cmake --build build --config Release
 ```
 
-生成的程序位于 `build/Release/RemoveGhostDevices.exe`。删除设备需要管理员权限；设备重新连接后，Windows 仍可能重新安装它。
+生成的程序位于 `build/Release/GhostDeviceCleaner.exe`。删除设备需要管理员权限；设备重新连接后，Windows 仍可能重新安装它。
 
 ## GitHub Actions
 
-仓库包含 Windows x64 自动构建工作流。推送代码、创建 Pull Request 或手动运行工作流后，会生成 `RemoveGhostDevices-windows-x64.zip`，并在对应 Actions 运行页面保留 30 天供下载。
+仓库包含 Windows x64 自动构建工作流。推送代码、创建 Pull Request 或手动运行工作流后，会生成 `GhostDeviceCleaner-windows-x64.zip`，并在对应 Actions 运行页面保留 30 天供下载。
 
 ## 源码结构
 

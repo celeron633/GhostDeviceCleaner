@@ -126,12 +126,12 @@ LRESULT WINAPI window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
-    const wchar_t class_name[] = L"RemoveGhostDevicesWindow";
+    const wchar_t class_name[] = L"GhostDeviceCleanerWindow";
     WNDCLASSEXW window_class{sizeof(window_class), CS_CLASSDC, window_proc, 0, 0, instance,
         nullptr, LoadCursor(nullptr, IDC_ARROW), nullptr, nullptr, class_name, nullptr};
     RegisterClassExW(&window_class);
 
-    HWND window = CreateWindowW(class_name, L"Remove Ghost Devices", WS_OVERLAPPEDWINDOW,
+    HWND window = CreateWindowW(class_name, L"GhostDeviceCleaner", WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT, 1280, 800, nullptr, nullptr, instance, nullptr);
     if (!window || !create_device(window)) {
         MessageBoxW(nullptr, L"Unable to initialize the DirectX 11 renderer.", L"Startup error", MB_ICONERROR);

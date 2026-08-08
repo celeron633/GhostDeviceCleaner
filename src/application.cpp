@@ -59,7 +59,7 @@ void Application::draw_header() {
         return !device.present;
     }));
 
-    ImGui::TextColored(color_from_hex(0x89B4FA), "GHOST DEVICE CLEANER");
+    ImGui::TextColored(color_from_hex(0x89B4FA), "GhostDeviceCleaner");
     ImGui::SameLine();
     ImGui::TextDisabled("  SetupAPI / Win32");
     ImGui::Spacing();
@@ -439,7 +439,7 @@ void Application::render() {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->WorkPos);
     ImGui::SetNextWindowSize(viewport->WorkSize);
-    ImGui::Begin("Remove Ghost Devices", nullptr,
+    ImGui::Begin("GhostDeviceCleaner", nullptr,
         ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
     draw_header();
     ImGui::Spacing();
